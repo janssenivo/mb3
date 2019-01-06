@@ -22,7 +22,8 @@ Metadata:
       Parameters:
         - VpcCidr
         - AvailabilityZones
-        - PublicSubnetCidr
+        - PublicSubnetCidr0
+        - PublicSubnetCidr1
         - WebSubnetCidr0
         - WebSubnetCidr1
         - DBSubnetCidr0
@@ -42,8 +43,10 @@ Metadata:
         default: VPC CIDR
       AvailabilityZones:
         default: Availability Zones
-      WebSubnetCidr0:
-        default: Public subnet for bastion/nat gateways
+      PublicSubnetCidr0:
+        default: Public subnet AZ1
+      PublicSubnetCidr1:
+        default: Public subnet AZ2
       WebSubnetCidr0:
         default: Web subnet AZ1
       WebSubnetCidr1:
@@ -72,34 +75,40 @@ Parameters:
     Description: List of Availability Zones to use for the subnets in the VPC. SELECT AT LEAST TWO AZ's!
     Type: List<AWS::EC2::AvailabilityZone::Name>
     MinLength: 1
-  PublicSubnetCidr:
+  PublicSubnetCidr0:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
     Default: 10.31.1.0/24
-    Description: CIDR block for public subnet located in Availability Zone 1
+    Description: CIDR block for public subnet (nat gw, bastion) located in Availability Zone 1
+    Type: String
+  PublicSubnetCidr1:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.31.2.0/24
+    Description: CIDR block for public subnet (nat gw, bastion) located in Availability Zone 2
     Type: String
   WebSubnetCidr0:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
-    Default: 10.31.101.0/24
+    Default: 10.31.11.0/24
     Description: CIDR block for web subnet 1 located in Availability Zone 1
     Type: String
   WebSubnetCidr1:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
-    Default: 10.31.102.0/24
+    Default: 10.31.12.0/24
     Description: CIDR block for web subnet 2 located in Availability Zone 2
     Type: String
   DBSubnetCidr0:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
-    Default: 10.31.201.0/24
+    Default: 10.31.21.0/24
     Description: CIDR block for database subnet 1 located in Availability Zone 1
     Type: String
   DBSubnetCidr1:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
-    Default: 10.31.202.0/24
+    Default: 10.31.22.0/24
     Description: CIDR block for database subnet 2 located in Availability Zone 2
     Type: String
 
@@ -116,8 +125,6 @@ Parameters:
 
 
 
-
-
 Resources:
 
   VPC:
@@ -130,18 +137,6 @@ Resources:
         - Key: Name
           Value: !Join [ '', [ 'VPC/', !Ref 'AWS::StackName' ] ]
 
-  PublicSubnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
-      CidrBlock: !Ref PublicSubnetCidr
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Join [ '', [ 'PublicSubnet0/', !Ref 'AWS::StackName' ] ]
-        - Key: SubnetType
-          Value: Public
-      VpcId: !Ref VPC
   WebSubnet0:
     Type: AWS::EC2::Subnet
     Properties:
@@ -157,7 +152,7 @@ Resources:
   WebSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 1, !Ref AvailabilityZones ]
       CidrBlock: !Ref WebSubnetCidr1
       MapPublicIpOnLaunch: false
       Tags:
@@ -181,7 +176,7 @@ Resources:
   DBSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 1, !Ref AvailabilityZones ]
       CidrBlock: !Ref DBSubnetCidr1
       MapPublicIpOnLaunch: false
       Tags:
@@ -190,6 +185,127 @@ Resources:
         - Key: SubnetType
           Value: Private
       VpcId: !Ref VPC
+  PublicSubnet0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
+      CidrBlock: !Ref PublicSubnetCidr0
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'PublicSubnet0/', !Ref 'AWS::StackName' ] ]
+        - Key: SubnetType
+          Value: Public
+      VpcId: !Ref VPC
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !Ref AvailabilityZones ]
+      CidrBlock: !Ref PublicSubnetCidr1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'PublicSubnet1/', !Ref 'AWS::StackName' ] ]
+        - Key: SubnetType
+          Value: Public
+      VpcId: !Ref VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'IGW/', !Ref 'AWS::StackName' ] ]
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  InternetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'InternetRouteTable1/', !Ref 'AWS::StackName' ] ]
+      VpcId: !Ref VPC
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachInternetGateway
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTable      
+  InternetRouteAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet0
+  InternetRouteAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  NatEIP0:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  NatGateway0:
+    Type: AWS::EC2::NatGateway
+    DependsOn: AttachInternetGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP0.AllocationId
+      SubnetId: !Ref PublicSubnet0
+  NatRoute0:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable0
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway0
+  NatRouteTable0:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ '', ['NatRouteTable0/', !Ref 'AWS::StackName' ] ]
+        - Key: Network
+          Value: Public
+      VpcId: !Ref VPC
+  NATRouteAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref NatRouteTable0
+      SubnetId: !Ref WebSubnet0
+  NatEIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    DependsOn: AttachInternetGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+  NatRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+  NatRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'NatRouteTable1/', !Ref 'AWS::StackName' ] ]
+        - Key: Network
+          Value: Public
+      VpcId: !Ref VPC
+  NATRouteAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref NatRouteTable1
+      SubnetId: !Ref WebSubnet1
 
   BastionSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -264,6 +380,15 @@ Resources:
       VpcId:
         !Ref VPC           
         
+  WebserverLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
+      InstanceMonitoring: true
+      InstanceType: t2.micro
+      KeyName: !Ref EC2KeyName
+      SecurityGroups:
+        - !Ref WebSecurityGroup        
 
 
 
@@ -277,3 +402,34 @@ Outputs:
     Value: !GetAtt [ VPC, CidrBlock]
 
 
+Mappings:
+
+  RegionMap:
+    ap-northeast-1:
+      AMI: ami-da9e2cbc
+    ap-northeast-2:
+      AMI: ami-1196317f
+    ap-south-1:
+      AMI: ami-d5c18eba
+    ap-southeast-1:
+      AMI: ami-c63d6aa5
+    ap-southeast-2:
+      AMI: ami-ff4ea59d
+    ca-central-1:
+      AMI: ami-d29e25b6
+    eu-central-1:
+      AMI: ami-bf2ba8d0
+    eu-west-1:
+      AMI: ami-1a962263
+    eu-west-2:
+      AMI: ami-e7d6c983
+    sa-east-1:
+      AMI: ami-286f2a44
+    us-east-1:
+      AMI: ami-55ef662f
+    us-east-2:
+      AMI: ami-15e9c770
+    us-west-1:
+      AMI: ami-a51f27c5
+    us-west-2:
+      AMI: ami-bf4193c7
