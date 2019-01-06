@@ -1,0 +1,16 @@
+{
+  "name": "chaosmb",
+  "version": "0.0.1",
+  "description": "Cause choas by deleting resources for the AWS MasterBuilder program",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "AWS_REGION=us-west-2 AWS_PROFILE=mb node index.js"
+  },
+  "author": "Ivo Janssen <jansseni@amazon.com>",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.384.0",
+    "inquirer": "^6.2.1"
+  }
+}
