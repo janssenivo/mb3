@@ -124,7 +124,6 @@ Parameters:
     MinLength: 1
 
 
-
 Resources:
 
   VPC:
@@ -234,16 +233,16 @@ Resources:
     Properties:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-      RouteTableId: !Ref RouteTable      
+      RouteTableId: !Ref InternetRouteTable
   InternetRouteAssociation0:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref RouteTable
+      RouteTableId: !Ref InternetRouteTable
       SubnetId: !Ref PublicSubnet0
   InternetRouteAssociation1:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref RouteTable
+      RouteTableId: !Ref InternetRouteTable
       SubnetId: !Ref PublicSubnet1
 
   NatEIP0:
@@ -379,16 +378,107 @@ Resources:
           CidrIp: 0.0.0.0/0
       VpcId:
         !Ref VPC           
-        
-  WebserverLaunchConfiguration:
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Join [ '', [ 'InstanceProfile-', !Ref 'AWS::StackName' ] ]
+      Path: /
+      Roles:
+      - !Ref InstanceRole
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ '', [ 'InstanceRole-', !Ref 'AWS::StackName' ] ] 
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+      - arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess
+      - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+      - arn:aws:iam::aws:policy/CloudWatchFullAccess
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogStreams
+            Resource:
+            - arn:aws:logs:*:*:*
+      
+
+  WebAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      Cooldown: 60
+      HealthCheckGracePeriod: 120
+      HealthCheckType: EC2
+      LaunchConfigurationName: !Ref WebLaunchConfiguration
+      MaxSize: 1
+      MinSize: 1
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'Web/', !Ref 'AWS::StackName' ] ]
+          PropagateAtLaunch: true
+      VPCZoneIdentifier: [ !Ref WebSubnet0, !Ref WebSubnet1 ]
+  WebLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
       ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
-      InstanceMonitoring: true
+      IamInstanceProfile: !Ref InstanceProfile
       InstanceType: t2.micro
       KeyName: !Ref EC2KeyName
       SecurityGroups:
-        - !Ref WebSecurityGroup        
+        - !Ref WebSecurityGroup
+      UserData: 
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            echo "<h1>Octank website</h1><hr><i>(internal IP " > /var/www/html/index.html
+            curl http://169.254.169.254/latest/meta-data/local-ipv4 >> /var/www/html/index.html
+            echo ")</i>" >>/var/www/html/index.html
+
+  BastionAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      Cooldown: 60
+      HealthCheckGracePeriod: 120
+      HealthCheckType: EC2
+      LaunchConfigurationName: !Ref BastionLaunchConfiguration
+      MaxSize: 1
+      MinSize: 1
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'Bastion/', !Ref 'AWS::StackName' ] ]
+          PropagateAtLaunch: true
+      VPCZoneIdentifier: [ !Ref PublicSubnet0, !Ref PublicSubnet1 ]
+  BastionLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+       ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
+       IamInstanceProfile: !Ref InstanceProfile
+       InstanceType: t2.micro
+       KeyName: !Ref EC2KeyName
+       SecurityGroups:
+         - !Ref BastionSecurityGroup
+
+
 
 
 
@@ -397,9 +487,9 @@ Outputs:
   StackStatus:
     Description: Master Stack Status
     Value: !Join [ '', [ 'Stack created in region: ', !Ref 'AWS::Region' ] ]
-  VPCCIDR:
-    Description: VPC CIDR
-    Value: !GetAtt [ VPC, CidrBlock]
+  # BastionIP:
+  #   Description: Bastion access
+  #   Value: !Join ['ssh -A ec2-user@', [!GetAtt [ Bastion, CidrBlock] ] ]
 
 
 Mappings:
