@@ -10,6 +10,9 @@ Metadata:
   License:
     Description: 'Inspired from https://github.com/aws-samples/aws-refarch-wordpress'
 
+############
+# PARAMETERS
+############    
   AWS::CloudFormation::Interface:
     ParameterGroups:
     - Label:
@@ -138,8 +141,34 @@ Parameters:
     Description: 'Domain name in which to add the DNS entry for the webserver'
     Type: String
 
+  DBUsername:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master username.
+    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+    MaxLength: 16
+    MinLength: 4
+    Type: String
+    Default: octank
+  DBPassword:
+    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
+    Description: The Amazon RDS master password.
+    MaxLength: 41
+    MinLength: 8
+    NoEcho: true
+    Type: String
+    Default: password
+  DBName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Type: String 
+    Default: octank
+
 Resources:
 
+############
+# NETWORKING
+############  
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -320,6 +349,9 @@ Resources:
       RouteTableId: !Ref NatRouteTable1
       SubnetId: !Ref WebSubnet1
 
+############
+# SECURITYGROUPS
+############      
   BastionSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -389,6 +421,9 @@ Resources:
       VpcId:
         !Ref VPC           
 
+############
+# EC2
+############
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -463,7 +498,8 @@ Resources:
             chkconfig httpd on
             echo "<h1>Octank website</h1><hr><i>(internal IP " > /var/www/html/index.html
             curl http://169.254.169.254/latest/meta-data/local-ipv4 >> /var/www/html/index.html
-            echo ")</i>" >>/var/www/html/index.html
+            echo ")</i><hr>" >>/var/www/html/index.html
+            echo "<?php phpinfo(); ?>" > /var/www/html/phpinfo.php
 
   BastionAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -489,6 +525,9 @@ Resources:
        SecurityGroups:
          - !Ref BastionSecurityGroup
 
+############
+# LOAD BALANCER
+############
   AlbListenerSslCertificate:
     Type : AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -531,26 +570,73 @@ Resources:
     Properties:
       HostedZoneName: !Join ['', [!Ref DomainName, '.']]
       RecordSets:
-      - Name: !Join ['', ['www.', !Ref DomainName, '.']]
+      - Name: !Join ['', ['octank.', !Ref DomainName, '.']]
         Type: A
         AliasTarget:
           DNSName: !GetAtt [ ApplicationLoadBalancer, DNSName ]
           HostedZoneId: !GetAtt [ ApplicationLoadBalancer, CanonicalHostedZoneID ]
 
+############
+# DATABASE
+############
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS Database Subnet Group for WordPress
+      SubnetIds: 
+      - !Ref DBSubnet0
+      - !Ref DBSubnet1
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'Octank/', !Ref 'AWS::StackName' ] ]
+  MasterDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Ref 'DBName'
+      DBName: !Ref 'DBName'
+      AllocatedStorage: 20
+      DBInstanceClass: db.m4.large
+      StorageType: gp2
+      Engine: MySQL
+      MasterUsername: !Ref 'DBUsername'
+      MasterUserPassword: !Ref 'DBPassword'
+      PubliclyAccessible: false
+      MultiAZ: true
+      Tags:
+      - 
+        Key: Name
+        Value: Octank Master Database
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref DatabaseSecurityGroup
+    DeletionPolicy: Delete
+  ReplicaDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Join [ '', [!Ref 'DBName', '-rr' ] ]
+      SourceDBInstanceIdentifier: !Ref 'MasterDB'
+      DBInstanceClass: db.m4.large
+      StorageType: gp2
+      Tags:
+      - 
+        Key: Name
+        Value: Octank Read Replica Database
 
 
+############
+# OUTPUTS
+############
 Outputs:
-
   StackStatus:
     Description: Master Stack Status
     Value: !Join [ '', [ 'Stack created in region: ', !Ref 'AWS::Region' ] ]
   Website:
      Description: URL for the website
-     Value: !Join ['https://', ['octank.', !Ref DomainName, '/']]
+     Value: !Join ['', ['https://octank.', !Ref DomainName, '/']]
 
 
+# AMI mappings for generic Linux AMI
 Mappings:
-
   RegionMap:
     ap-northeast-1:
       AMI: ami-da9e2cbc
