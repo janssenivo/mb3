@@ -13,11 +13,12 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
     - Label:
-        default: Security
+        default: Access
       Parameters:
         - EC2KeyName
         - SshAccessCidr
         - AlbAcmCertificate
+        - DomainName
     - Label:
         default: Network
       Parameters:
@@ -43,6 +44,8 @@ Metadata:
         default: EC2 Key Pair
       AlbAcmCertificate:
         default: ALB Certificate
+      DomainName:
+        default: DNS domain name
 
       VpcCidr: 
         default: VPC CIDR
@@ -129,10 +132,11 @@ Parameters:
     MinLength: 1
   AlbAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
-    Description: 'The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB in advance.'
+    Description: 'The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB in advance'
     Type: String
-    ## TODO: Do not hardcode this
-    Default: 'arn:aws:acm:us-west-2:644190228464:certificate/0ceb5378-ecbf-437e-85a4-42d8294aab8b'
+  DomainName:
+    Description: 'Domain name in which to add the DNS entry for the webserver'
+    Type: String
 
 Resources:
 
@@ -522,6 +526,16 @@ Resources:
         Value: !Join [ '', [ 'ALB-tg/ ', !Ref 'AWS::StackName' ] ]
       UnhealthyThresholdCount: 5
       VpcId: !Ref VPC
+  RecordSet:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: !Join ['', [!Ref DomainName, '.']]
+      RecordSets:
+      - Name: !Join ['', ['www.', !Ref DomainName, '.']]
+        Type: A
+        AliasTarget:
+          DNSName: !GetAtt [ ApplicationLoadBalancer, DNSName ]
+          HostedZoneId: !GetAtt [ ApplicationLoadBalancer, CanonicalHostedZoneID ]
 
 
 
@@ -530,9 +544,9 @@ Outputs:
   StackStatus:
     Description: Master Stack Status
     Value: !Join [ '', [ 'Stack created in region: ', !Ref 'AWS::Region' ] ]
-  # BastionIP:
-  #   Description: Bastion access
-  #   Value: !Join ['ssh -A ec2-user@', [!GetAtt [ Bastion, CidrBlock] ] ]
+  Website:
+     Description: URL for the website
+     Value: !Join ['https://', ['octank.', !Ref DomainName, '/']]
 
 
 Mappings:
