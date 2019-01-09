@@ -3,13 +3,11 @@
 const AWS = require('aws-sdk');
 const inquirer = require('inquirer');
 
-let hosts = [];
-
-
 // RETRIEVE LIST OF RUNNING INSTANCES
 // TODO: query by "master builder" tag or something 
 let describeInstances = new AWS.EC2().describeInstances().promise();
 describeInstances.then(data => {
+    let hosts = [];
     data.Reservations.forEach(r => {
         r.Instances.forEach(i => {
             let name = ""; i.Tags.forEach((t) => {if (t.Key === "Name") name = t.Value});
@@ -31,7 +29,7 @@ describeInstances.then(data => {
 }).then(answer => {
     //console.log(answer);
 
-// TERMINATE SELECTION INSTANCE
+// TERMINATE SELECTED INSTANCE
     let params = { InstanceIds: [ answer.InstanceId]};
     //console.log(params);
     return new AWS.EC2().terminateInstances(params).promise();
