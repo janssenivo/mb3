@@ -8,12 +8,13 @@
 
 * Source this shell script for commands "crstack" etc.
 
-```source stackbuilder.sh```
-* Sample parameter file:
+```$ source stackbuilder.sh```
+* Sample parameter file: ```cf-parameters.json```
 
 ```[
     { "ParameterKey": "EC2KeyName",         "ParameterValue": "mykeyname" },
     { "ParameterKey": "AvailabilityZones",  "ParameterValue": "us-east-1a,us-east-1b" },
+    { "ParameterKey": "DomainName",         "ParameterValue": "example.com" },
     { "ParameterKey": "AlbAcmCertificate",  "ParameterValue": "arn:aws:acm:us-east-1:123:certificate/uuid" }
 ]
 ```
