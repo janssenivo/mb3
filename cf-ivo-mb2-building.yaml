@@ -22,6 +22,7 @@ Metadata:
         - SshAccessCidr
         - AlbAcmCertificate
         - DomainName
+        - S3Source
     - Label:
         default: Network
       Parameters:
@@ -49,6 +50,8 @@ Metadata:
         default: ALB Certificate
       DomainName:
         default: DNS domain name
+      S3Source:
+        default: S3 bucket for website files
 
       VpcCidr: 
         default: VPC CIDR
@@ -140,6 +143,10 @@ Parameters:
   DomainName:
     Description: 'Domain name in which to add the DNS entry for the webserver'
     Type: String
+  S3Source:
+    Description: 'S3 bucket where website resides'
+    Type: String
+    Default: "ivo-mb-assets"
 
   DBUsername:
     AllowedPattern: ^([a-zA-Z0-9]*)$
@@ -446,9 +453,6 @@ Resources:
           - sts:AssumeRole
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
-      - arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess
-      - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
-      - arn:aws:iam::aws:policy/CloudWatchFullAccess
       Policies:
       - PolicyName: logs
         PolicyDocument:
@@ -462,6 +466,15 @@ Resources:
             - logs:DescribeLogStreams
             Resource:
             - arn:aws:logs:*:*:*
+      - PolicyName: describe
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: 
+            - ec2:DescribeInstances
+            - rds:DescribeDBInstances
+            Resource: '*'
       
   WebAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -472,8 +485,8 @@ Resources:
       LaunchConfigurationName: !Ref WebLaunchConfiguration
       TargetGroupARNs:
         - !Ref AlbTargetGroup  
-      MaxSize: 1
-      MinSize: 1
+      MaxSize: 2
+      MinSize: 2
       Tags:
         - Key: Name
           Value: !Join [ '', [ 'Web/', !Ref 'AWS::StackName' ] ]
@@ -481,6 +494,7 @@ Resources:
       VPCZoneIdentifier: [ !Ref WebSubnet0, !Ref WebSubnet1 ]
   WebLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
+    DependsOn: MasterDB
     Properties:
       ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
       IamInstanceProfile: !Ref InstanceProfile
@@ -493,13 +507,29 @@ Resources:
           !Sub |
             #!/bin/bash
             yum update -y
-            yum install -y httpd
+            yum install -y httpd php php-pdo php-mysql
             service httpd start
             chkconfig httpd on
-            echo "<h1>Octank website</h1><hr><i>(internal IP " > /var/www/html/index.html
-            curl http://169.254.169.254/latest/meta-data/local-ipv4 >> /var/www/html/index.html
-            echo ")</i><hr>" >>/var/www/html/index.html
-            echo "<?php phpinfo(); ?>" > /var/www/html/phpinfo.php
+            /opt/aws/bin/cfn-init --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
+            #/opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
+ 
+    Metadata: 
+      AWS::CloudFormation::Init: 
+        config:
+          commands: 
+            10copyS3:
+              env:
+                S3Source: !Ref S3Source
+              command: aws s3 cp s3://${S3Source}/index.php /var/www/html/index.php && aws s3 cp s3://${S3Source}/vars.sh /tmp
+            20runvars:
+              env: 
+                S3Source: !Ref S3Source
+                Region: !Ref AWS::Region
+                DBEndpoint: !GetAtt MasterDB.Endpoint.Address
+                DBName: !Ref DBName
+                DBUsername: !Ref DBUsername
+                DBPassword: !Ref DBPassword
+              command: sh /tmp/vars.sh
 
   BastionAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -518,12 +548,21 @@ Resources:
   BastionLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-       ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
-       IamInstanceProfile: !Ref InstanceProfile
-       InstanceType: t2.micro
-       KeyName: !Ref EC2KeyName
-       SecurityGroups:
-         - !Ref BastionSecurityGroup
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: t2.micro
+      KeyName: !Ref EC2KeyName
+      SecurityGroups:
+        - !Ref BastionSecurityGroup
+      UserData: 
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            # note: the odd use of single vs double quotes in the next two lines is on purpose. sigh bash...
+            echo '#!/bin/sh' > /usr/bin/ec2list
+            echo "aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId, PrivateIpAddress, Tags[?Key==\`Name\`].Value | [0]]' --output text --region ${AWS::Region}" >> /usr/bin/ec2list
+            chmod 755 /usr/bin/ec2list
 
 ############
 # LOAD BALANCER
@@ -592,7 +631,7 @@ Resources:
   MasterDB:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: !Ref 'DBName'
+      DBInstanceIdentifier: !Join [ '', [ 'Octank-', !Ref 'AWS::StackName' ] ]
       DBName: !Ref 'DBName'
       AllocatedStorage: 20
       DBInstanceClass: db.m4.large
@@ -610,17 +649,17 @@ Resources:
       VPCSecurityGroups: 
       - !Ref DatabaseSecurityGroup
     DeletionPolicy: Delete
-  ReplicaDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: !Join [ '', [!Ref 'DBName', '-rr' ] ]
-      SourceDBInstanceIdentifier: !Ref 'MasterDB'
-      DBInstanceClass: db.m4.large
-      StorageType: gp2
-      Tags:
-      - 
-        Key: Name
-        Value: Octank Read Replica Database
+  # ReplicaDB:
+  #   Type: AWS::RDS::DBInstance
+  #   Properties:
+  #     DBInstanceIdentifier: !Join [ '', [ 'Octank-RR-', !Ref 'AWS::StackName' ] ]
+  #     SourceDBInstanceIdentifier: !Ref 'MasterDB'
+  #     DBInstanceClass: db.m4.large
+  #     StorageType: gp2
+  #     Tags:
+  #     - 
+  #       Key: Name
+  #       Value: Octank Read Replica Database
 
 
 ############
@@ -633,6 +672,9 @@ Outputs:
   Website:
      Description: URL for the website
      Value: !Join ['', ['https://octank.', !Ref DomainName, '/']]
+  S3Bucket:
+     Description: S3 bucket with website assets
+     Value: !Ref S3Source
 
 
 # AMI mappings for generic Linux AMI
