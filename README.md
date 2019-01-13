@@ -10,6 +10,7 @@
 * Make ```style.css``` and ```octank.png``` public via the Console since they are static file references in the webpage
 * Set S3 bucket name as "S3Source" in parameters file below
 * Create keypair, ssl certificate, set them in parameters file below  
+* This stack relies on access to an existing Route53 domain
 
 ## Handy tips for automation
 
@@ -28,5 +29,5 @@
 ]
 ```
 
-* Use ```crstack``` to create a stack, ``upstack``` to update the stack, ```delstack``` to delete the stack
+* Use ```crstack``` to create a stack, ```upstack``` to update the stack, ```delstack``` to delete the stack
 * Use ```describestack``` to get a running log (via ```watch```) of stack events
