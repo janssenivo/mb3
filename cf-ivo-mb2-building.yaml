@@ -512,7 +512,6 @@ Resources:
             chkconfig httpd on
             /opt/aws/bin/cfn-init --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
             #/opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
- 
     Metadata: 
       AWS::CloudFormation::Init: 
         config:
@@ -563,6 +562,21 @@ Resources:
             echo '#!/bin/sh' > /usr/bin/ec2list
             echo "aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId, PrivateIpAddress, Tags[?Key==\`Name\`].Value | [0]]' --output text --region ${AWS::Region}" >> /usr/bin/ec2list
             chmod 755 /usr/bin/ec2list
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            10copyS3:
+              env:
+                S3Source: !Ref S3Source
+              command: aws s3 cp s3://${S3Source}/octank.sql /tmp
+            20runvars:
+              env:
+                DBEndpoint: !GetAtt MasterDB.Endpoint.Address
+                DBName: !Ref DBName
+                DBUsername: !Ref DBUsername
+                DBPassword: !Ref DBPassword
+              command: "mysql -h ${DBEndpoint} --user=${DBUsername} --password=${DBPassword} ${DBName} < /tmp/octank.sql"
 
 ############
 # LOAD BALANCER
