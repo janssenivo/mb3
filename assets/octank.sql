@@ -1,4 +1,4 @@
---DROP TABLE customers;
+-- DROP TABLE customers;
 CREATE TABLE customers (
   customer_id INT NOT NULL,
   customer_name VARCHAR(200) NOT NULL,

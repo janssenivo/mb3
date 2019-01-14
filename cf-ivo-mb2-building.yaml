@@ -387,6 +387,10 @@ Resources:
           FromPort: 3306
           ToPort: 3306
           SourceSecurityGroupId: !Ref WebSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
       VpcId:
         !Ref VPC
   WebSecurityGroup:
@@ -558,10 +562,12 @@ Resources:
           !Sub |
             #!/bin/bash
             yum update -y
+            yum install mysql -y
             # note: the odd use of single vs double quotes in the next two lines is on purpose. sigh bash...
             echo '#!/bin/sh' > /usr/bin/ec2list
             echo "aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId, PrivateIpAddress, Tags[?Key==\`Name\`].Value | [0]]' --output text --region ${AWS::Region}" >> /usr/bin/ec2list
             chmod 755 /usr/bin/ec2list
+            /opt/aws/bin/cfn-init --verbose --stack ${AWS::StackName} --resource BastionLaunchConfiguration --region ${AWS::Region}
     Metadata:
       AWS::CloudFormation::Init:
         config:
