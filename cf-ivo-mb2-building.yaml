@@ -21,6 +21,8 @@ Metadata:
         - EC2KeyName
         - SshAccessCidr
         - AlbAcmCertificate
+        - DoCloudFront
+        - AlbAcmCertificateUsEast1
         - DomainName
         - S3Source
     - Label:
@@ -47,7 +49,11 @@ Metadata:
       EC2KeyName:
         default: EC2 Key Pair
       AlbAcmCertificate:
-        default: ALB Certificate
+        default: ALB Certificate ALB zone
+      DoCloudFront:
+        default: Install Cloudfront distribution
+      AlbAcmCertificate:
+        default: ALB Certificate us-east-1
       DomainName:
         default: DNS domain name
       S3Source:
@@ -77,6 +83,8 @@ Metadata:
       DBPassword:
         default: Database password
 
+Conditions:
+  DoCloudFront: !Equals [ !Ref DoCloudFront, "yes" ]
 
 Parameters:
   VpcCidr:
@@ -139,6 +147,15 @@ Parameters:
   AlbAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
     Description: 'The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB in advance'
+    Type: String
+  DoCloudFront:
+    Description: Check if a CloudFront distribution should be inserted between ALB and Route53
+    Type: String
+    Default: 'yes'
+    AllowedValues: ['yes', 'no']
+  AlbAcmCertificateUsEast1:
+    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+    Description: 'The AWS Certification Manager certificate ARN for the Cloudfront certificate - this certificate must be created in us-east-1'
     Type: String
   DomainName:
     Description: 'Domain name in which to add the DNS entry for the webserver'
@@ -570,6 +587,7 @@ Resources:
             /opt/aws/bin/cfn-init --verbose --stack ${AWS::StackName} --resource BastionLaunchConfiguration --region ${AWS::Region}
     Metadata:
       AWS::CloudFormation::Init:
+        # bastion host first boot initializes the database with some sample data from octank.sql
         config:
           commands:
             10copyS3:
@@ -624,6 +642,44 @@ Resources:
         Value: !Join [ '', [ 'ALB-tg/ ', !Ref 'AWS::StackName' ] ]
       UnhealthyThresholdCount: 5
       VpcId: !Ref VPC
+
+  CloudFront:
+    Type: AWS::CloudFront::Distribution
+    Condition: DoCloudFront
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - !Join ['', ['*.', !Ref DomainName]]
+        - !Ref 'AWS::NoValue'
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - GET
+          - HEAD
+          - OPTIONS
+          DefaultTTL: 900
+          MaxTTL: 900
+          MinTTL: 0
+          ForwardedValues:
+            QueryString: true
+            Headers:
+            - '*'
+            Cookies:
+              Forward: all
+          TargetOriginId: alb
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: false
+        Enabled: true
+        Origins:
+        - DomainName: !GetAtt [ ApplicationLoadBalancer, DNSName ]
+          Id: alb
+          CustomOriginConfig:
+            OriginProtocolPolicy: match-viewer
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AlbAcmCertificateUsEast1
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1
+
   RecordSet:
     Type: AWS::Route53::RecordSetGroup
     Properties:
@@ -631,9 +687,12 @@ Resources:
       RecordSets:
       - Name: !Join ['', ['octank.', !Ref DomainName, '.']]
         Type: A
+        Failover: PRIMARY
+        SetIdentifier: Octank-primary
         AliasTarget:
-          DNSName: !GetAtt [ ApplicationLoadBalancer, DNSName ]
-          HostedZoneId: !GetAtt [ ApplicationLoadBalancer, CanonicalHostedZoneID ]
+          DNSName: !If [ DoCloudFront, !GetAtt [ CloudFront, DomainName ], !GetAtt [ ApplicationLoadBalancer, DNSName ] ]
+          HostedZoneId: !If [ DoCloudFront, 'Z2FDTNDATAQYW2', !GetAtt [ ApplicationLoadBalancer, CanonicalHostedZoneID] ]
+          EvaluateTargetHealth: true
 
 ############
 # DATABASE

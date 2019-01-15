@@ -25,7 +25,8 @@
     { "ParameterKey": "AvailabilityZones",  "ParameterValue": "us-east-1a,us-east-1b" },
     { "ParameterKey": "DomainName",         "ParameterValue": "example.com" },
     { "ParameterKey": "S3Source",           "ParameterValue": "mybucketname" },
-    { "ParameterKey": "AlbAcmCertificate",  "ParameterValue": "arn:aws:acm:us-east-1:123:certificate/uuid" }
+    { "ParameterKey": "AlbAcmCertificate",  "ParameterValue": "arn:aws:acm:us-west-2:123:certificate/uuid" }
+    { "ParameterKey": "AlbAcmCertificateUsEast1",  "ParameterValue": "arn:aws:acm:us-east-1:456:certificate/uuid" }
 ]
 ```
 
