@@ -20,16 +20,14 @@ Metadata:
       Parameters:
         - EC2KeyName
         - SshAccessCidr
-        - AlbAcmCertificate
         - DoCloudFront
-        - AlbAcmCertificateUsEast1
+        - IsPrimary
         - DomainName
         - S3Source
     - Label:
         default: Network
       Parameters:
         - VpcCidr
-        - AvailabilityZones
         - PublicSubnetCidr0
         - PublicSubnetCidr1
         - WebSubnetCidr0
@@ -48,21 +46,17 @@ Metadata:
         default: SSH Access CIDR
       EC2KeyName:
         default: EC2 Key Pair
-      AlbAcmCertificate:
-        default: ALB Certificate ALB zone
       DoCloudFront:
-        default: Install Cloudfront distribution
-      AlbAcmCertificate:
-        default: ALB Certificate us-east-1
+        default: Install Cloudfront?
+      IsPrimary:
+        default: Primary Region?
       DomainName:
         default: DNS domain name
       S3Source:
-        default: S3 bucket for website files
+        default: S3 bucket for website assets
 
       VpcCidr: 
         default: VPC CIDR
-      AvailabilityZones:
-        default: Availability Zones
       PublicSubnetCidr0:
         default: Public subnet AZ1
       PublicSubnetCidr1:
@@ -85,6 +79,7 @@ Metadata:
 
 Conditions:
   DoCloudFront: !Equals [ !Ref DoCloudFront, "yes" ]
+  IsPrimary: !Equals [ !Ref IsPrimary, "yes" ]
 
 Parameters:
   VpcCidr:
@@ -93,10 +88,6 @@ Parameters:
     Default: 10.31.0.0/16
     Description: CIDR block for the VPC
     Type: String
-  AvailabilityZones:
-    Description: List of Availability Zones to use for the subnets in the VPC. SELECT AT LEAST TWO AZ's!
-    Type: List<AWS::EC2::AvailabilityZone::Name>
-    MinLength: 1
   PublicSubnetCidr0:
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
@@ -144,26 +135,22 @@ Parameters:
     Description: Name of an EC2 KeyPair. Your bastion & Web instances will launch with this KeyPair.
     Type: AWS::EC2::KeyPair::KeyName
     MinLength: 1
-  AlbAcmCertificate:
-    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
-    Description: 'The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB in advance'
-    Type: String
   DoCloudFront:
-    Description: Check if a CloudFront distribution should be inserted between ALB and Route53
+    Description: Check if a CloudFront distribution should be inserted between ALB and Route53 (yes/no)
     Type: String
-    Default: 'yes'
+    Default: 'no'
     AllowedValues: ['yes', 'no']
-  AlbAcmCertificateUsEast1:
-    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
-    Description: 'The AWS Certification Manager certificate ARN for the Cloudfront certificate - this certificate must be created in us-east-1'
+  IsPrimary:
+    Description: Is this the primary region? This affects DNS "failover" setting and whether to create DB from snapshot or not (yes/no)
     Type: String
+    Default: 'no'
+    AllowedValues: ['yes', 'no']
   DomainName:
     Description: 'Domain name in which to add the DNS entry for the webserver'
     Type: String
   S3Source:
     Description: 'S3 bucket where website resides'
     Type: String
-    Default: "ivo-mb-assets"
 
   DBUsername:
     AllowedPattern: ^([a-zA-Z0-9]*)$
@@ -206,7 +193,7 @@ Resources:
   WebSubnet0:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 0, !GetAZs ]
       CidrBlock: !Ref WebSubnetCidr0
       MapPublicIpOnLaunch: false
       Tags:
@@ -218,7 +205,7 @@ Resources:
   WebSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 1, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 1, !GetAZs ]
       CidrBlock: !Ref WebSubnetCidr1
       MapPublicIpOnLaunch: false
       Tags:
@@ -230,7 +217,7 @@ Resources:
   DBSubnet0:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 0, !GetAZs ]
       CidrBlock: !Ref DBSubnetCidr0
       MapPublicIpOnLaunch: false
       Tags:
@@ -242,7 +229,7 @@ Resources:
   DBSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 1, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 1, !GetAZs ]
       CidrBlock: !Ref DBSubnetCidr1
       MapPublicIpOnLaunch: false
       Tags:
@@ -254,7 +241,7 @@ Resources:
   PublicSubnet0:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 0, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 0, !GetAZs ]
       CidrBlock: !Ref PublicSubnetCidr0
       MapPublicIpOnLaunch: true
       Tags:
@@ -266,7 +253,7 @@ Resources:
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [ 1, !Ref AvailabilityZones ]
+      AvailabilityZone: !Select [ 1, !GetAZs ]
       CidrBlock: !Ref PublicSubnetCidr1
       MapPublicIpOnLaunch: true
       Tags:
@@ -455,14 +442,14 @@ Resources:
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Join [ '', [ 'InstanceProfile-', !Ref 'AWS::StackName' ] ]
+      InstanceProfileName: !Join [ '-', [ 'InstanceProfile', !Ref 'AWS::Region', !Ref 'AWS::StackName' ] ]
       Path: /
       Roles:
       - !Ref InstanceRole
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Join [ '', [ 'InstanceRole-', !Ref 'AWS::StackName' ] ] 
+      RoleName: !Join [ '-', [ 'InstanceRole', !Ref 'AWS::Region', !Ref 'AWS::StackName' ] ] 
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -609,7 +596,7 @@ Resources:
     Type : AWS::ElasticLoadBalancingV2::Listener
     Properties:
       Certificates:
-      - CertificateArn: !Ref AlbAcmCertificate
+      - CertificateArn: !FindInMap [ CertMap, !Ref 'AWS::Region', cert ]
       DefaultActions:
       - Type: forward
         TargetGroupArn: !Ref AlbTargetGroup
@@ -619,6 +606,7 @@ Resources:
   ApplicationLoadBalancer: 
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
+      Name: !Join [ '-', [ 'ALB', !Ref 'AWS::Region', !Ref 'AWS::StackName' ] ]
       Scheme: internet-facing
       Subnets: [ !Ref PublicSubnet0, !Ref PublicSubnet1 ]
       LoadBalancerAttributes:
@@ -632,15 +620,17 @@ Resources:
   AlbTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      HealthCheckIntervalSeconds: 30
+      Name: !Join [ '-', [ 'ALB-tg', !Ref 'AWS::Region', !Ref 'AWS::StackName' ] ]
       HealthCheckPath: /
-      HealthCheckTimeoutSeconds: 5
+      HealthCheckIntervalSeconds: 5
+      HealthCheckTimeoutSeconds: 2
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
       Port: 80
       Protocol: HTTP
       Tags:
       - Key: Name
-        Value: !Join [ '', [ 'ALB-tg/ ', !Ref 'AWS::StackName' ] ]
-      UnhealthyThresholdCount: 5
+        Value: !Join [ '', [ 'ALB-tg/', !Ref 'AWS::StackName' ] ]
       VpcId: !Ref VPC
 
   CloudFront:
@@ -676,7 +666,7 @@ Resources:
             OriginProtocolPolicy: match-viewer
         PriceClass: PriceClass_100
         ViewerCertificate:
-          AcmCertificateArn: !Ref AlbAcmCertificateUsEast1
+          AcmCertificateArn: !FindInMap [ CertMap, 'us-east-1', cert ]
           SslSupportMethod: sni-only
           MinimumProtocolVersion: TLSv1
 
@@ -687,8 +677,8 @@ Resources:
       RecordSets:
       - Name: !Join ['', ['octank.', !Ref DomainName, '.']]
         Type: A
-        Failover: PRIMARY
-        SetIdentifier: Octank-primary
+        Failover: !If [ IsPrimary, 'PRIMARY', 'SECONDARY' ]
+        SetIdentifier: !If [ IsPrimary, 'octank-Primary', 'octank-Secondary' ]
         AliasTarget:
           DNSName: !If [ DoCloudFront, !GetAtt [ CloudFront, DomainName ], !GetAtt [ ApplicationLoadBalancer, DNSName ] ]
           HostedZoneId: !If [ DoCloudFront, 'Z2FDTNDATAQYW2', !GetAtt [ ApplicationLoadBalancer, CanonicalHostedZoneID] ]
@@ -787,3 +777,13 @@ Mappings:
       AMI: ami-a51f27c5
     us-west-2:
       AMI: ami-bf4193c7
+
+  CertMap:
+    us-east-1: 
+      cert: "arn:aws:acm:us-east-1:644190228464:certificate/96a7c42e-a3e8-41da-b3c6-cda4a8e6dde3"
+    us-east-2: 
+      cert: "arn:aws:acm:us-east-2:644190228464:certificate/a7f29ce6-8775-454f-8c5a-8f52d9ceb0f4"
+    us-west-1: 
+      cert: "arn:aws:acm:us-west-1:644190228464:certificate/f336b7a0-c5f8-4448-8b3d-4eb2157181fc"
+    us-west-2: 
+      cert: "arn:aws:acm:us-west-2:644190228464:certificate/0ceb5378-ecbf-437e-85a4-42d8294aab8b"

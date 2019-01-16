@@ -2,18 +2,34 @@
 // Ivo Janssen <jansseni@amazon.com> for MasterBuilder III
 const AWS = require('aws-sdk');
 const inquirer = require('inquirer');
+let region='';
+
+process.env.AWS_REGION='';
+
+// PICK REGION
+var regionprompt = inquirer.createPromptModule();
+var questions = [{
+    type:'list',
+    message:'select AWS region',
+    name:'region',
+    choices:['us-east-1','us-east-2','us-west-1','us-west-2']
+}];
+regionprompt(questions).then(answer => {
+    console.log("Getting instance list for region "+answer.region);
+    region=answer.region;
 
 // RETRIEVE LIST OF RUNNING INSTANCES
 // TODO: query by "master builder" tag or something 
-let describeInstances = new AWS.EC2().describeInstances().promise();
-describeInstances.then(data => {
+    return new AWS.EC2({region:region}).describeInstances().promise();
+}).then(data => {
     let hosts = [];
     data.Reservations.forEach(r => {
         r.Instances.forEach(i => {
+            //console.log (i);
             let name = ""; i.Tags.forEach((t) => {if (t.Key === "Name") name = t.Value});
+            let state = i.State.Name;
             let InstanceId = i.InstanceId;
-            hosts.push({value:InstanceId, name:name+"("+InstanceId+")"});
-            //console.log(instanceId,name);
+            hosts.push({value:InstanceId, name:name+"("+InstanceId+", "+state+")"});
         })
     });
 
@@ -32,7 +48,7 @@ describeInstances.then(data => {
 // TERMINATE SELECTED INSTANCE
     let params = { InstanceIds: [ answer.InstanceId]};
     //console.log(params);
-    return new AWS.EC2().terminateInstances(params).promise();
+    return new AWS.EC2({region:region}).terminateInstances(params).promise();
 }).then(data => {
     console.log(JSON.stringify(data));
     
