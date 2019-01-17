@@ -30,6 +30,7 @@
     { "ParameterKey": "DomainName",   "ParameterValue": "mydomain.com" },
     { "ParameterKey": "S3Source",     "ParameterValue": "mys3bucket" },
     { "ParameterKey": "DoCloudFront", "ParameterValue": "no" },
+    { "ParameterKey": "DoRoute53",    "ParameterValue": "yes" },
     { "ParameterKey": "IsPrimary",    "ParameterValue": "yes" },
     { "ParameterKey": "DBSnapShot",   "ParameterValue": "my-snapshot-name" }
 ]

@@ -21,6 +21,7 @@ Metadata:
         - EC2KeyName
         - SshAccessCidr
         - DoCloudFront
+        - DoRoute53
         - IsPrimary
         - DomainName
         - S3Source
@@ -49,6 +50,8 @@ Metadata:
         default: EC2 Key Pair
       DoCloudFront:
         default: Install Cloudfront?
+      DoRoute53:
+        default: Install Route53 Recordset?
       IsPrimary:
         default: Primary Region?
       DomainName:
@@ -82,6 +85,7 @@ Metadata:
 
 Conditions:
   DoCloudFront: !Equals [ !Ref DoCloudFront, "yes" ]
+  DoRoute53: !Equals [ !Ref DoRoute53, "yes" ]
   IsPrimary: !Equals [ !Ref IsPrimary, "yes" ]
 
 Parameters:
@@ -139,9 +143,14 @@ Parameters:
     Type: AWS::EC2::KeyPair::KeyName
     MinLength: 1
   DoCloudFront:
-    Description: Check if a CloudFront distribution should be inserted between ALB and Route53 (yes/no)
+    Description: Yes if a CloudFront distribution should be inserted between ALB and Route53
     Type: String
     Default: 'no'
+    AllowedValues: ['yes', 'no']
+  DoRoute53:
+    Description: Yes if a Route53 RecordSet should be created
+    Type: String
+    Default: 'yes'
     AllowedValues: ['yes', 'no']
   IsPrimary:
     Description: Is this the primary region? This affects DNS "failover" setting and whether to create DB from snapshot or not (yes/no)
@@ -678,6 +687,7 @@ Resources:
 
   RecordSet:
     Type: AWS::Route53::RecordSetGroup
+    Condition: DoRoute53
     Properties:
       HostedZoneName: !Join ['', [!Ref DomainName, '.']]
       RecordSets:
