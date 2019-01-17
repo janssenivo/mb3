@@ -40,6 +40,7 @@ Metadata:
         - DBName
         - DBUsername
         - DBPassword
+        - DBSnapShot
 
     ParameterLabels:
       SshAccessCidr: 
@@ -76,6 +77,8 @@ Metadata:
         default: Database username
       DBPassword:
         default: Database password
+      DBSnapShot:
+        default: Database snapshot
 
 Conditions:
   DoCloudFront: !Equals [ !Ref DoCloudFront, "yes" ]
@@ -154,7 +157,7 @@ Parameters:
 
   DBUsername:
     AllowedPattern: ^([a-zA-Z0-9]*)$
-    Description: The Amazon RDS master username.
+    Description: RDS master username.
     ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
     MaxLength: 16
     MinLength: 4
@@ -163,7 +166,7 @@ Parameters:
   DBPassword:
     AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
     ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
-    Description: The Amazon RDS master password.
+    Description: RDS master password.
     MaxLength: 41
     MinLength: 8
     NoEcho: true
@@ -171,9 +174,12 @@ Parameters:
     Default: password
   DBName:
     AllowedPattern: ^([a-zA-Z0-9]*)$
-    Description: The Amazon RDS master database name.
+    Description: RDS master database name.
     Type: String 
     Default: octank
+  DBSnapShot:
+    Description: RDS database snapshot name, RDS will be initialized from snapshot if 'IsPrimary' is 'no'
+    Type: String 
 
 Resources:
 
@@ -701,7 +707,8 @@ Resources:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceIdentifier: !Join [ '', [ 'Octank-', !Ref 'AWS::StackName' ] ]
-      DBName: !Ref 'DBName'
+      DBName: !If [ IsPrimary, !Ref DBName, !Ref 'AWS::NoValue' ]
+      DBSnapshotIdentifier: !If [ IsPrimary, !Ref 'AWS::NoValue', !Ref DBSnapShot ]
       AllocatedStorage: 20
       DBInstanceClass: db.m4.large
       StorageType: gp2

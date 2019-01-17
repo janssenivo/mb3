@@ -14,8 +14,8 @@
 * If you set "IsPrimary" to "yes", then the DNS RecordSet will be created as Failover/PRIMARY
 * If you set "IsPrimary" to "no", then two things will happen:
   # the DNS RecordSet will be created as Failover/SECONDARY
-  # the Database will be created from snapshot (to be defined in the parameters)
-* The Secondary option is useful if you want to create this stack in a second region as a failover region. 
+  # the Database will be created from snapshot (defined in the parameters)
+* The "Secondary" option is useful if you want to create this stack in a second region as a failover region. 
 
 ## Handy tips for automation
 
@@ -31,6 +31,7 @@
     { "ParameterKey": "S3Source",     "ParameterValue": "mys3bucket" },
     { "ParameterKey": "DoCloudFront", "ParameterValue": "no" },
     { "ParameterKey": "IsPrimary",    "ParameterValue": "yes" },
+    { "ParameterKey": "DBSnapShot",   "ParameterValue": "my-snapshot-name" }
 ]
 ```
 * At this time, the ACM Cert mappings for the various regions are hardcoded in the template. 
