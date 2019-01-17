@@ -18,10 +18,10 @@ var questions = [{
     choices:['us-east-1','us-east-2','us-west-1','us-west-2']
 }];
 regionprompt(questions).then(answer => {
-    console.log("Getting ec2 instances and databases for region "+answer.region);
+    console.log("Getting resources for region "+answer.region);
     region=answer.region;
 
-// RETRIEVE LIST OF RUNNING EC2 AND RDS INSTANCES
+// RETRIEVE LIST OF RUNNING EC2, RDS AND ALB INSTANCES
 // TODO: query by "master builder" tag or something 
     return new AWS.EC2({region:region}).describeInstances().promise();
 }).then(data => {
@@ -41,8 +41,15 @@ regionprompt(questions).then(answer => {
         let DBInstanceID = d.DBInstanceIdentifier;
         let az = d.AvailabilityZone;
         let endpoint = d.Endpoint.Address;
-        let type = "rds";
         hosts.push({value:DBInstanceID, type:"rds", endpoint: endpoint, name:"rds: "+DBInstanceID+" ("+az+")"});
+    })
+
+    return new AWS.ELBv2({region:region}).describeLoadBalancers().promise();
+}).then(data => {
+    data.LoadBalancers.forEach(l => {
+        let LoadBalancerName = l.LoadBalancerName;
+        let LoadBalancerArn = l. LoadBalancerArn;
+        hosts.push({value:LoadBalancerArn, type:"alb", name:"alb: "+LoadBalancerName});
     })
 
 // PROMPT WHICH INSTANCE TO TERMINATE
@@ -63,9 +70,19 @@ regionprompt(questions).then(answer => {
         let params = { InstanceIds: [ thishost.value]};
         return new AWS.EC2({region:region}).terminateInstances(params).promise();
     } else if (thishost.type === "rds") {
-        console.log("Rebooting with failover rds instance "+ thishost.name);
+        console.log("Rebooting with failover "+ thishost.name);
         let params = { DBInstanceIdentifier: thishost.value, ForceFailover: true}
         return new AWS.RDS({region:region}).rebootDBInstance(params).promise();
+    } else if (thishost.type === "alb") {
+        console.log("Removing all listeners from "+ thishost.name);
+        let params = { LoadBalancerArn: thishost.value}
+        let descList = new AWS.ELBv2({region:region}).describeListeners(params, (err, data) => {
+            let params = { ListenerArn: ''};
+            data.Listeners.forEach(l => {
+                params.ListenerArn = l.ListenerArn; // only deletes one listener per ALB, sufficient for this demo
+            });
+            return new AWS.ELBv2({region:region}).deleteListener(params).promise();
+        });
     }
 }).then(data => {
     //console.log("Result:", JSON.stringify(data));
