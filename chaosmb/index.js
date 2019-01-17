@@ -4,6 +4,7 @@ const AWS = require('aws-sdk');
 const inquirer = require('inquirer');
 let region='';
 let hosts = [];
+let thishost = {};
 
 // unset any environment variable just in case
 process.env.AWS_REGION='';
@@ -39,8 +40,9 @@ regionprompt(questions).then(answer => {
     data.DBInstances.forEach(d => {
         let DBInstanceID = d.DBInstanceIdentifier;
         let az = d.AvailabilityZone;
+        let endpoint = d.Endpoint.Address;
         let type = "rds";
-        hosts.push({value:DBInstanceID, type:"rds", name:"rds: "+DBInstanceID+" ("+az+")"});
+        hosts.push({value:DBInstanceID, type:"rds", endpoint: endpoint, name:"rds: "+DBInstanceID+" ("+az+")"});
     })
 
 // PROMPT WHICH INSTANCE TO TERMINATE
@@ -53,21 +55,24 @@ regionprompt(questions).then(answer => {
     }];
     return prompt(questions);
 }).then(answer => {
-    let host = hosts.find(e => {return e.value === answer.id})
+    thishost = hosts.find(e => {return e.value === answer.id})
 
 // TERMINATE OR FAILOVER SELECTED INSTANCE
-    if(host.type === "ec2") {
-        console.log("Terminating instance "+ host.name);
-        let params = { InstanceIds: [ host.value]};
+    if(thishost.type === "ec2") {
+        console.log("Terminating instance "+ thishost.name);
+        let params = { InstanceIds: [ thishost.value]};
         return new AWS.EC2({region:region}).terminateInstances(params).promise();
-    } else if (host.type === "rds") {
-        console.log("Rebooting with failover rds instance "+ host.name);
-        let params = { DBInstanceIdentifier: host.value, ForceFailover: true}
+    } else if (thishost.type === "rds") {
+        console.log("Rebooting with failover rds instance "+ thishost.name);
+        let params = { DBInstanceIdentifier: thishost.value, ForceFailover: true}
         return new AWS.RDS({region:region}).rebootDBInstance(params).promise();
     }
 }).then(data => {
     //console.log("Result:", JSON.stringify(data));
-    
+    if (thishost.type === "rds") {
+        console.log("to follow fail-over, run this command:");
+        console.log("while true; do host "+thishost.endpoint+";sleep 1;done");
+    }
 },(err) => {
     console.log("ERROR! ",err);
 });
